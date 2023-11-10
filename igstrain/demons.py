@@ -213,10 +213,11 @@ def strain_to_mises(strain_tensor):
 import SimpleITK as sitk
 import numpy as np
 
-def demons_registration(np_fixed, np_moving, name=None, iterations=30, scaling_factors=[8, 4, 2], sigmas=[1, 10]):
+def demons_registration(np_fixed, np_moving, name=None, iterations=30, scaling_factors=[8, 4, 2], sigmas=[1, 5]):
     """
     Performs multi-resolution Demons registration on 3D images and computes the von Mises strain.
-    According to Zwahlen et al., 2015. https://doi.org/10.1115/1.4028991
+    According to Zwahlen et al., 2015. https://doi.org/10.1115/1.4028991 
+    with adapted sigma to 5 instead of 10. 
     
     Parameters:
     - np_fixed (numpy.ndarray): The fixed 3D image data.
@@ -333,7 +334,7 @@ def main():
     parser.add_argument("--iterations", type=int, default=30, help="Number of iterations for the demons registration. Default is 30.")
     parser.add_argument("--scaling_factors", type=int, nargs="+", default=[8, 4, 2], help="Scaling factors for downscaling at each resolution level. Default is [8, 4, 2].")
     parser.add_argument("--update_field_sigma", type=float, default=1.0, help="Standard deviation for smoothing the update field. Default is 1.0.")
-    parser.add_argument("--deformation_field_sigma", type=float, default=10.0, help="Standard deviation for smoothing the deformation field. Default is 10.0.")
+    parser.add_argument("--deformation_field_sigma", type=float, default=5.0, help="Standard deviation for smoothing the deformation field. Default is 5.0.")
     
     args = parser.parse_args()
 
