@@ -49,7 +49,46 @@ def dict_to_vtkFile(data_dict, output_filename, spacing=None, origin=None, array
     writer.SetInputData(image)
     writer.Write()
     
+def vtkFile_to_dict(filename):
+    reader = vtk.vtkXMLImageDataReader()
+    reader.SetFileName(filename)
+    reader.Update()
     
+    # Create an empty dictionary to store the NumPy arrays with their names
+    image_data_dict = {}
+    
+    # Get the number of point data arrays (fields) in the VTK file
+    num_arrays = reader.GetNumberOfPointArrays()
+    
+    for i in range(num_arrays):
+        array_name = reader.GetPointArrayName(i)
+        print(f"Reading dataset with array name: {array_name}")
+    
+        # Get the i-th dataset (point data array)
+        array = reader.GetOutput().GetPointData().GetArray(i)
+    
+        if array is not None:
+            # Convert the VTK data array to a NumPy array
+            numpy_array = vtk_to_numpy(array)
+    
+            # Get the original dimensions of the dataset
+            extent = reader.GetOutput().GetExtent()
+            x_min, x_max, y_min, y_max, z_min, z_max = extent
+            x_dim = x_max - x_min + 1
+            y_dim = y_max - y_min + 1
+            z_dim = z_max - z_min + 1
+    
+            # Reshape the NumPy array to its original shape
+            original_array = numpy_array.reshape((z_dim, y_dim, x_dim))
+            rotated_array = np.transpose(original_array, (2, 1, 0))
+    
+            # Add the NumPy array to the dictionary with the image name as the key
+            image_data_dict[array_name] = rotated_array
+        else:
+            print("Error: Unable to read the dataset.")
+
+    return image_data_dict
+
 def pad_images(images):
     """
     Pad a list of 3D images with zeros to match the dimensions of the largest image.
@@ -339,8 +378,15 @@ def main():
     args = parser.parse_args()
 
     # Read the moving and fixed images
-    moving_image = read_file(glob(args.moving_path)[0])
-    fixed_image = read_file(glob(args.fixed_path)[0])
+    try:
+        moving_image = read_file(glob(args.moving_path)[0])
+    except:
+        print(f'Moving image not found {args.moving_path}')
+    try:
+        fixed_image = read_file(glob(args.fixed_path)[0])
+    except:
+        print(f'Fixed image not found {args.fixed_path}')
+        
 
     fixed_image, moving_image = pad_images([fixed_image, moving_image])
 
