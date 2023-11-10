@@ -24,7 +24,7 @@ setup(
     ],
     entry_points={
         'console_scripts': [
-            'igstrain=demons.main:main',
+            'igstrain=igstrain.demons:main',
         ],
     },
 )

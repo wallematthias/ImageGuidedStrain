@@ -6,6 +6,7 @@ from PIL import Image
 import vtk
 from vtk.util.numpy_support import numpy_to_vtk, vtk_to_numpy
 from glob import glob
+import argparse
 
 def dict_to_vtkFile(data_dict, output_filename, spacing=None, origin=None, array_type=vtk.VTK_FLOAT):
     '''Convert numpy arrays in a dictionary to vtkImageData
@@ -50,14 +51,31 @@ def dict_to_vtkFile(data_dict, output_filename, spacing=None, origin=None, array
     
     
 def pad_images(images):
+    """
+    Pad a list of 3D images with zeros to match the dimensions of the largest image.
+
+    This function takes a list of 3D NumPy arrays representing images and pads each image
+    with zeros along the x, y, and z axes to match the dimensions of the largest image in
+    the list.
+
+    Parameters:
+    - images (list of ndarrays): List of 3D NumPy arrays representing images.
+
+    Returns:
+    - list of ndarrays: List of padded 3D images with dimensions matching the largest image.
+    """
+
+    # Find the maximum dimensions among the input images
     max_shape = np.max([image.shape for image in images], axis=0)
-    padded_images = []
     
+    # Pad each image to match the maximum dimensions
+    padded_images = []
     for image in images:
         pad_x = max_shape[0] - image.shape[0]
         pad_y = max_shape[1] - image.shape[1]
         pad_z = max_shape[2] - image.shape[2]
         
+        # Pad the image with zeros
         padded_image = np.pad(image, ((0, pad_x), (0, pad_y), (0, pad_z)), mode='constant', constant_values=0)
         padded_images.append(padded_image)
     
@@ -267,12 +285,13 @@ def demons_registration(np_fixed, np_moving, name=None, iterations=30, scaling_f
     von_mises_strain[von_mises_strain > von_mises_strain_99] = von_mises_strain_99
 
     # Split displacements into their x,y,z components
-    x, y, z = np.split(np.squeeze(np_displacement), 3, axis=-1)
-
+    x, y, z = np.split(np_displacement, 3, axis=-1)
+    x, y, z = np.squeeze(x), np.squeeze(y), np.squeeze(z)
+    
     # Merge dictionaries and rename keys
     data = {'fixed': np_fixed, 'effective_strain': von_mises_strain,
             'displacement_x': x, 'displacement_y': y, 'displacement_z': z,
-            **{f'strain_{key}': value for key, value in np_strain_tensor.items()}}
+            **{f'strain_{key}': np.squeeze(value) for key, value in np_strain_tensor.items()}}
 
 
     if name is not None:
@@ -286,7 +305,6 @@ def demons_registration(np_fixed, np_moving, name=None, iterations=30, scaling_f
 
 
 def main():
-    
     """
     Interactive script for performing demons registration with user-provided inputs.
 
@@ -295,37 +313,53 @@ def main():
     Enter to accept default values for optional parameters.
 
     Parameters:
-    - moving_path (str): Path to the moving image file.
     - fixed_path (str): Path to the fixed image file.
-    - name (str): Output name for the registration result. Default is None.
+    - moving_path (str): Path to the moving image file.
+    - name (str): Output name for the registration result. Default is based on the fixed image name.
     - iterations (int): Number of iterations for the demons registration. Default is 30.
     - scaling_factors (list): Scaling factors for downscaling at each resolution level. Default is [8, 4, 2].
-    - update_field_sigma (float): Standard deviation for smoothing the update field. Default is 1.
-    - deformation_field_sigma (float): Standard deviation for smoothing the deformation field. Default is 10.
+    - update_field_sigma (float): Standard deviation for smoothing the update field. Default is 1.0.
+    - deformation_field_sigma (float): Standard deviation for smoothing the deformation field. Default is 10.0.
 
     Returns:
     - None
     """
     
-    # Ask the user for the moving and fixed image paths
-    fixed_path = input("Enter the path to the fixed image file: ")
-    moving_path = input("Enter the path to the moving image file: ")
+    parser = argparse.ArgumentParser(description="Interactive script for performing demons registration with user-provided inputs.")
+    
+    parser.add_argument("fixed_path", type=str, help="Path to the fixed image file.")
+    parser.add_argument("moving_path", type=str, help="Path to the moving image file.")
+    parser.add_argument("--name", type=str, default="", help="Output name for the registration result. Default is based on the fixed image name.")
+    parser.add_argument("--iterations", type=int, default=30, help="Number of iterations for the demons registration. Default is 30.")
+    parser.add_argument("--scaling_factors", type=int, nargs="+", default=[8, 4, 2], help="Scaling factors for downscaling at each resolution level. Default is [8, 4, 2].")
+    parser.add_argument("--update_field_sigma", type=float, default=1.0, help="Standard deviation for smoothing the update field. Default is 1.0.")
+    parser.add_argument("--deformation_field_sigma", type=float, default=10.0, help="Standard deviation for smoothing the deformation field. Default is 10.0.")
+    
+    args = parser.parse_args()
 
     # Read the moving and fixed images
-    moving_image = read_file(moving_path)
-    fixed_image = read_file(fixed_path)
+    moving_image = read_file(glob(args.moving_path)[0])
+    fixed_image = read_file(glob(args.fixed_path)[0])
 
-    # Ask the user for additional parameters with defaults
-    name = input("Enter the output name (press Enter for default, default is based on input name): ") or f'{os.path.basename(fixed_path).split('.')[0]}.vti'
-    iterations = int(input("Enter the number of iterations (press Enter for default, default is 30): ") or 30)
-    scaling_factors = list(map(int, input("Enter scaling factors (press Enter for default, default is 8, 4, 2): ") or [8, 4, 2]))
-    update_field_sigma = float(input("Enter update field sigma (press Enter for default, default is 1): ") or 1)
-    deformation_field_sigma = float(input("Enter deformation field sigma (press Enter for default, default is 10): ") or 10)
+    fixed_image, moving_image = pad_images([fixed_image, moving_image])
+
+    # Set default name if not provided
+    default_path = os.path.dirname(args.fixed_path)
+    default_name = f'{os.path.basename(args.fixed_path).split(".")[0]}.vti'
+    name = args.name or os.path.join(default_path, default_name)
+
+    # Check if the file already exists, and if it does, add a suffix
+    suffix = 1
+    while os.path.exists(name):
+        name = os.path.join(default_path, f'{default_name.split(".")[0]}_{suffix}.vti')
+        suffix += 1
 
     # Perform demons registration
-    demons_registration(fixed_image, moving_image, name=name, iterations=iterations,
-                        scaling_factors=scaling_factors,
-                        sigmas=[update_field_sigma, deformation_field_sigma])
+    demons_registration(fixed_image, moving_image, name=name, iterations=args.iterations,
+                        scaling_factors=args.scaling_factors,
+                        sigmas=[args.update_field_sigma, args.deformation_field_sigma])
+
+
 
 if __name__ == "__main__":
     main()
