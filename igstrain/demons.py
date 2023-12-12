@@ -252,7 +252,7 @@ def strain_to_mises(strain_tensor):
 import SimpleITK as sitk
 import numpy as np
 
-def demons_registration(np_fixed, np_moving, name=None, iterations=30, scaling_factors=[8, 4, 2], sigmas=[1, 5]):
+def demons_registration(np_fixed, np_moving, name=None, iterations=30, scaling_factors=[8, 4, 2], sigmas=[1, 10]):
     """
     Performs multi-resolution Demons registration on 3D images and computes the von Mises strain.
     According to Zwahlen et al., 2015. https://doi.org/10.1115/1.4028991 
@@ -335,7 +335,12 @@ def demons_registration(np_fixed, np_moving, name=None, iterations=30, scaling_f
 
 
     if name is not None:
-        dict_to_vtkFile(data, name)
+        
+        if name.split('.')[-1] == 'vti':
+            dict_to_vtkFile(data, name)
+        else: 
+            image = sitk.GetImageFromArray(von_mises_strain)
+            sitk.WriteImage(image, name)
 
     print("-------")
     print(f"Number Of Iterations: {demons.GetElapsedIterations()}")
@@ -344,7 +349,7 @@ def demons_registration(np_fixed, np_moving, name=None, iterations=30, scaling_f
     return data
 
 
-def main():
+def main(args):
     """
     Interactive script for performing demons registration with user-provided inputs.
 
@@ -365,18 +370,6 @@ def main():
     - None
     """
     
-    parser = argparse.ArgumentParser(description="Interactive script for performing demons registration with user-provided inputs.")
-    
-    parser.add_argument("fixed_path", type=str, help="Path to the fixed image file.")
-    parser.add_argument("moving_path", type=str, help="Path to the moving image file.")
-    parser.add_argument("--name", type=str, default="", help="Output name for the registration result. Default is based on the fixed image name.")
-    parser.add_argument("--iterations", type=int, default=30, help="Number of iterations for the demons registration. Default is 30.")
-    parser.add_argument("--scaling_factors", type=int, nargs="+", default=[8, 4, 2], help="Scaling factors for downscaling at each resolution level. Default is [8, 4, 2].")
-    parser.add_argument("--update_field_sigma", type=float, default=1.0, help="Standard deviation for smoothing the update field. Default is 1.0.")
-    parser.add_argument("--deformation_field_sigma", type=float, default=5.0, help="Standard deviation for smoothing the deformation field. Default is 5.0.")
-    
-    args = parser.parse_args()
-
     # Read the moving and fixed images
     try:
         moving_image = read_file(glob(args.moving_path)[0])
@@ -390,23 +383,38 @@ def main():
 
     fixed_image, moving_image = pad_images([fixed_image, moving_image])
 
+    
     # Set default name if not provided
     default_path = os.path.dirname(args.fixed_path)
-    default_name = f'{os.path.basename(args.fixed_path).split(".")[0]}.vti'
-    name = args.name or os.path.join(default_path, default_name)
+    default_name = f'{os.path.basename(args.moving_path).split(".")[0]}_demons_strain.mha'
 
     # Check if the file already exists, and if it does, add a suffix
     suffix = 1
-    while os.path.exists(name):
-        name = os.path.join(default_path, f'{default_name.split(".")[0]}_{suffix}.vti')
+    while os.path.exists(default_name):
+        default_name = os.path.join(default_path, f'{default_name.split(".")[0]}_{suffix}.mha')
         suffix += 1
 
+    name = args.name or os.path.join(default_path, default_name)
+
     # Perform demons registration
-    demons_registration(fixed_image, moving_image, name=name, iterations=args.iterations,
+    data = demons_registration(fixed_image, moving_image, name=name, iterations=args.iterations,
                         scaling_factors=args.scaling_factors,
                         sigmas=[args.update_field_sigma, args.deformation_field_sigma])
 
-
+    return data 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Interactive script for performing demons registration with user-provided inputs.")
+    
+    parser.add_argument("fixed_path", type=str, help="Path to the fixed image file.")
+    parser.add_argument("moving_path", type=str, help="Path to the moving image file.")
+    parser.add_argument("--name", type=str, default="", help="Output name for the registration result. Default is based on the fixed image name.")
+    parser.add_argument("--iterations", type=int, default=30, help="Number of iterations for the demons registration. Default is 30.")
+    parser.add_argument("--scaling_factors", type=int, nargs="+", default=[8, 4, 2], help="Scaling factors for downscaling at each resolution level. Default is [8, 4, 2].")
+    parser.add_argument("--update_field_sigma", type=float, default=1.0, help="Standard deviation for smoothing the update field. Default is 1.0.")
+    parser.add_argument("--deformation_field_sigma", type=float, default=10.0, help="Standard deviation for smoothing the deformation field. Default is 5.0.")
+    
+    args = parser.parse_args()
+    
+    
+    main(args)
